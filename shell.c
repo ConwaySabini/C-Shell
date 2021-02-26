@@ -9,15 +9,33 @@
 * @version 7.5.0
 */
 
-#include <stdbool.h>
+#include <iostream>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+using namespace std;
 
 #define MAX_LINE 80 // The maximum length command
+
+int freeArr(char *args[MAX_LINE])
+{
+    char *token;
+    int i = 0;
+    token = args[i];
+    while (token != NULL) // free history
+    {
+        if (token != (char *)NULL)
+        {
+            free(args[i]);
+        }
+        i++;
+        token = args[i];
+    }
+    return 1;
+}
 
 // method to fork, create child and execute command
 int execute(char *args[MAX_LINE], bool should_wait)
@@ -26,7 +44,7 @@ int execute(char *args[MAX_LINE], bool should_wait)
     pid_t pid = fork(); // fork to create child process
     if (pid < 0)
     {
-        printf("%s\n", "Error on fork");
+        cerr << "Error on Fork" << endl;
         return 0;
     }
     else if (pid == 0) // Child
@@ -34,7 +52,7 @@ int execute(char *args[MAX_LINE], bool should_wait)
         int rc = execvp(args[0], args); // execute command with arguments
         if (rc == -1)
         {
-            printf("%s\n", "Error on execvp");
+            cerr << "Error on execvp" << endl;
         }
         exit(EXIT_SUCCESS);
     }
@@ -46,8 +64,7 @@ int execute(char *args[MAX_LINE], bool should_wait)
         }
         else
         {
-            printf("%s", "pid ");
-            printf("%d\n", pid);
+            cout << "pid " << pid << endl;
             waitpid(0, &status, WNOHANG);
             should_wait = true;
         }
@@ -56,7 +73,7 @@ int execute(char *args[MAX_LINE], bool should_wait)
 }
 
 // method for piping commands between child and parent process
-int exePipe(char *commands[MAX_LINE], int pipes[MAX_LINE], int amper)
+int pipe(char *commands[MAX_LINE], int pipes[MAX_LINE], int amper)
 {
     int status = 0;
     char *arr[80];
@@ -69,7 +86,7 @@ int exePipe(char *commands[MAX_LINE], int pipes[MAX_LINE], int amper)
 
     if (p_pid < 0) // Failed
     {
-        printf("%s\n", "Error on fork");
+        cerr << "Error on Fork" << endl;
         free(*arr);
         free(*arr2);
         return 0;
@@ -91,7 +108,7 @@ int exePipe(char *commands[MAX_LINE], int pipes[MAX_LINE], int amper)
         int rc = execvp(arr[0], arr); // execute command with arguments
         if (rc == -1)
         {
-            printf("%s\n", "Error on execvp");
+            cerr << "Error on execvp" << endl;
         }
         dup2(stdout_cpy, 1);
         close(stdout_cpy);
@@ -106,7 +123,7 @@ int exePipe(char *commands[MAX_LINE], int pipes[MAX_LINE], int amper)
     int p2_pid = fork();
     if (p2_pid < 0)
     {
-        printf("%s\n", "Error on fork");
+        cerr << "Error on Fork" << endl;
         free(*arr);
         free(*arr2);
         return 0;
@@ -131,7 +148,7 @@ int exePipe(char *commands[MAX_LINE], int pipes[MAX_LINE], int amper)
         int rc = execvp(arr2[0], arr2);
         if (rc == -1)
         {
-            printf("%s\n", "Error on execvp");
+            cerr << "Error on execvp" << endl;
         }
         dup2(incpy, 0);
         close(incpy);
@@ -141,8 +158,7 @@ int exePipe(char *commands[MAX_LINE], int pipes[MAX_LINE], int amper)
     {
         if (amper)
         {
-            printf("%s", "pid ");
-            printf("%d\n", p2_pid);
+            cout << "pid " << p2_pid << endl;
             waitpid(0, &status, WNOHANG);
         }
     }
@@ -191,15 +207,15 @@ int main(void)
 
         if (strcmp(token, "exit\n") == 0) // free memory and exit
         {
-            free(*history); //TODO debug
-            free(*args);
+            freeArr(history);
+            freeArr(args);
             exit(EXIT_SUCCESS);
         }
         else if (strcmp(token, "!!\n") == 0) // execute previous command
         {
             if (!isHist)
             {
-                printf("%s\n", "No recent commands in history");
+                cerr << "No recent command in history" << endl;
                 continue;
             }
             int l = 0; // index for parsing
@@ -227,11 +243,11 @@ int main(void)
                     should_wait = false;
                     history[l] = (char *)NULL;
                 }
-                printf("%s", tmp);
+                cout << tmp << " ";
                 l++;
                 tmp = history[l];
             }
-            printf("\n");
+            cout << endl;
             if (isPipe || red_in || red_out)
             {
                 //do nothing for now
@@ -247,11 +263,11 @@ int main(void)
             {
                 if (pipe_count == 1)
                 {
-                    int res = exePipe(history, pipes, amper);
+                    int res = pipe(history, pipes, amper);
                     if (res == 0)
                     {
-                        free(*history);
-                        free(*args);
+                        freeArr(history);
+                        freeArr(args);
                         exit(EXIT_FAILURE);
                     }
                     isPipe = 0;
@@ -266,7 +282,7 @@ int main(void)
                 }
                 else
                 {
-                    printf("%s\n", "Shell only supports one pipe at a time");
+                    cout << "Shell only supports one pipe at a time" << endl;
                 }
             }
             else if (red_in) // history redirect in
@@ -275,7 +291,8 @@ int main(void)
                 int fd = open(history[file], O_RDONLY | O_CREAT, 0666);
                 if (!fd)
                 {
-                    printf("%s\n", "Error on file open");
+                    cerr << "Error opening file" << endl;
+                    close(fd);
                     continue;
                 }
                 dup2(fd, STDIN_FILENO); // redirect file to input
@@ -290,6 +307,7 @@ int main(void)
                 red_in = false;
                 if (!should_wait) // Parent
                 {
+                    //cout << "pid " << pid << endl;
                     should_wait = true;
                 }
             }
@@ -297,6 +315,7 @@ int main(void)
             {
                 if (!should_wait)
                 {
+                    //cout << "pid " << pid << endl;
                     should_wait = true;
                 }
                 int index = red_out;
@@ -316,17 +335,17 @@ int main(void)
                 history[file] = (char *)NULL;
                 if (fd == -1)
                 {
-                    printf("%s\n", "Error on file open");
-                    free(*history);
-                    free(*args);
+                    cerr << "Error on opening file" << endl;
+                    freeArr(history);
+                    freeArr(args);
                     exit(EXIT_FAILURE);
                 }
                 int dup_res = dup2(fd, STDOUT_FILENO); // redirect output to file
                 if (!dup_res)
                 {
-                    printf("%s\n", "Error on redirection");
-                    free(*history);
-                    free(*args);
+                    cerr << "Error on redirection" << endl;
+                    freeArr(history);
+                    freeArr(args);
                     exit(EXIT_FAILURE);
                 }
                 close(fd);
@@ -362,10 +381,20 @@ int main(void)
                     strcat(token, "\0");
                     idx++;
                 }
-
                 int i = 0;
-                token = args[i];
+                token = history[i];
+                while (token != NULL) // free history
+                {
+                    if (token != (char *)NULL)
+                    {
+                        free(history[i]);
+                    }
+                    i++;
+                    token = history[i];
+                }
 
+                i = 0;
+                token = args[i];
                 while (token != NULL) // make copy of string and store in history
                 {
                     const char *str = token;
@@ -397,7 +426,6 @@ int main(void)
                 {
                     should_wait = false;
                     args[count - 1] = (char *)NULL;
-                    //history[count - 1] = (char *)NULL;
                     amper = count - 1;
                     amper_count++;
                 }
@@ -409,6 +437,7 @@ int main(void)
                 {
                     if (!should_wait)
                     {
+                        //cout << "pid " << pid << endl;
                         //should_wait = true;
                     }
                     int index = red_out;
@@ -427,17 +456,17 @@ int main(void)
                     int fd = open(args[file], O_WRONLY | O_APPEND | O_CREAT, 0666);
                     if (fd == -1)
                     {
-                        printf("%s\n", "Error opening file");
-                        free(*args);
-                        free(*history);
+                        cerr << "Error on opening file" << endl;
+                        freeArr(history);
+                        freeArr(args);
                         exit(EXIT_FAILURE);
                     }
                     int dup_res = dup2(fd, STDOUT_FILENO);
                     if (!dup_res)
                     {
-                        printf("%s\n", "Error on redirection");
-                        free(*args);
-                        free(*history);
+                        cerr << "Error on redirection" << endl;
+                        freeArr(history);
+                        freeArr(args);
                         exit(EXIT_FAILURE);
                     }
                     close(fd);
@@ -452,9 +481,9 @@ int main(void)
                     int fd = open(args[file], O_RDONLY | O_CREAT, 0666);
                     if (!fd)
                     {
-                        printf("%s\n", "Error opening file");
-                        free(*args);
-                        free(*history);
+                        cerr << "error opening file" << endl;
+                        freeArr(history);
+                        freeArr(args);
                         exit(EXIT_FAILURE);
                     }
                     dup2(fd, STDIN_FILENO);
@@ -469,6 +498,7 @@ int main(void)
                     red_in = false;
                     if (!should_wait) // Parent
                     {
+                        //cout << "pid " << pid << endl;
                         //should_wait = true;
                     }
                 }
@@ -476,11 +506,11 @@ int main(void)
                 {
                     if (pipe_count == 1)
                     {
-                        int res = exePipe(args, pipes, amper);
+                        int res = pipe(args, pipes, amper);
                         if (res == 0)
                         {
-                            free(*history);
-                            free(*args);
+                            freeArr(history);
+                            freeArr(args);
                             exit(EXIT_FAILURE);
                         }
                         isPipe = 0;
@@ -495,7 +525,7 @@ int main(void)
                     }
                     else
                     {
-                        printf("%s\n", "Shell only supports one pipe at a time");
+                        cout << "Shell only supports one pipe at a time for now" << endl;
                     }
                 }
                 else // normal execution
@@ -507,9 +537,9 @@ int main(void)
 
                     if (pid < 0)
                     {
-                        fprintf(stderr, "Error on fork\n");
-                        free(*args);
-                        free(*history);
+                        cerr << "Error on Fork" << endl;
+                        freeArr(history);
+                        freeArr(args);
                         exit(EXIT_FAILURE);
                     }
                     else if (pid == 0) // Child
@@ -518,7 +548,7 @@ int main(void)
                         int rc = execvp(args[0], args); // execute command with arguments
                         if (rc == -1)
                         {
-                            printf("%s\n", "Error on execvp");
+                            cerr << "Error on execvp" << endl;
                         }
                         exit(EXIT_SUCCESS);
                     }
@@ -530,8 +560,7 @@ int main(void)
                         }
                         else
                         {
-                            printf("%s", "pid ");
-                            printf("%d\n", pid);
+                            cout << "pid " << pid << endl;
                             waitpid(0, &status, WNOHANG);
                             should_wait = true;
                         }
@@ -542,7 +571,7 @@ int main(void)
 
         loop++;
     }
-    free(*history);
-    free(*args);
+    freeArr(history);
+    freeArr(args);
     return 0;
 }
